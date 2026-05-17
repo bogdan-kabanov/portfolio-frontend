@@ -41,7 +41,7 @@ function formatRelative(s, lang) {
   return formatDate(s, lang)
 }
 
-function BlogCard({ post, lang, onOpen }) {
+function BlogCard({ post, lang, onOpen, onShare }) {
   const title = pickLocalized(post.title, lang)
   const excerpt = pickLocalized(post.excerpt, lang)
   const date = formatDate(post.publishedAt || post.createdAt, lang)
@@ -65,6 +65,23 @@ function BlogCard({ post, lang, onOpen }) {
           <div className="blog-card__cover-placeholder" aria-hidden="true">
             {(title || '?').slice(0, 2).toUpperCase()}
           </div>
+        )}
+        {onShare && (
+          <button
+            type="button"
+            className="blog-card__share"
+            onClick={(e) => { e.stopPropagation(); onShare(post) }}
+            aria-label={t(lang, 'blogShare')}
+            title={t(lang, 'blogShare')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+          </button>
         )}
       </div>
       <div className="blog-card__body">
@@ -224,7 +241,7 @@ function CommentsSection({ postId, lang, requestAuth }) {
   )
 }
 
-function BlogDetail({ post, lang, onBack, requestAuth }) {
+function BlogDetail({ post, lang, onBack, requestAuth, onShare }) {
   const { user } = useUser()
   const title = pickLocalized(post.title, lang)
   const content = pickLocalized(post.content, lang)
@@ -326,6 +343,23 @@ function BlogDetail({ post, lang, onBack, requestAuth }) {
           </svg>
           <span>{views}</span>
         </span>
+        {onShare && (
+          <button
+            type="button"
+            className="blog-detail__share"
+            onClick={() => onShare(post)}
+            title={t(lang, 'blogShare')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+            <span>{t(lang, 'blogShare')}</span>
+          </button>
+        )}
       </div>
 
       <div
@@ -338,13 +372,36 @@ function BlogDetail({ post, lang, onBack, requestAuth }) {
   )
 }
 
-function BlogOverlay({ onClose }) {
+function BlogOverlay({ initialSlug, onClose }) {
   const { lang } = useLang()
   const { posts } = usePortfolio()
   const { user, logout } = useUser()
   const [activeTag, setActiveTag] = useState(null)
   const [openId, setOpenId] = useState(null)
   const [authOpen, setAuthOpen] = useState(false)
+  const [shareCopied, setShareCopied] = useState(false)
+
+  // Open the post pointed to by the URL once posts are loaded.
+  useEffect(() => {
+    if (!initialSlug) return
+    const found = posts.find((p) => p.slug === initialSlug)
+    if (found) setOpenId(found.id)
+  }, [initialSlug, posts])
+
+  // Keep the URL in sync with the currently open post so users can copy/share it.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const post = openId ? posts.find((p) => p.id === openId) : null
+    if (post) {
+      url.searchParams.set('post', post.slug)
+    } else {
+      url.searchParams.delete('post')
+    }
+    const next = url.pathname + (url.search ? url.search : '') + url.hash
+    if (next !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.replaceState({}, '', next)
+    }
+  }, [openId, posts])
 
   // Lock background scroll while overlay is open
   useEffect(() => {
@@ -388,6 +445,35 @@ function BlogOverlay({ onClose }) {
   }, [openId])
 
   const openPost = openId ? posts.find((p) => p.id === openId) : null
+
+  function buildPostUrl(post) {
+    const url = new URL(window.location.href)
+    url.search = ''
+    url.hash = ''
+    url.searchParams.set('post', post.slug)
+    return url.toString()
+  }
+
+  async function sharePost(post) {
+    const url = buildPostUrl(post)
+    const title = pickLocalized(post.title, lang)
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, url })
+        return
+      } catch {
+        // user cancelled or share failed — fall through to clipboard copy
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      setShareCopied(true)
+      window.setTimeout(() => setShareCopied(false), 2000)
+    } catch {
+      // clipboard blocked — show the URL in a prompt as a last resort
+      window.prompt(t(lang, 'blogShareCopy'), url)
+    }
+  }
 
   return (
     <div className="blog-overlay" role="dialog" aria-modal="true" aria-label={t(lang, 'blogTitle')}>
@@ -462,6 +548,7 @@ function BlogOverlay({ onClose }) {
                     post={post}
                     lang={lang}
                     onOpen={() => setOpenId(post.id)}
+                    onShare={sharePost}
                   />
                 ))}
               </div>
@@ -473,9 +560,16 @@ function BlogOverlay({ onClose }) {
             lang={lang}
             onBack={() => setOpenId(null)}
             requestAuth={() => setAuthOpen(true)}
+            onShare={sharePost}
           />
         )}
       </div>
+
+      {shareCopied && (
+        <div className="blog-overlay__toast" role="status">
+          {t(lang, 'blogShareCopied')}
+        </div>
+      )}
 
       {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
     </div>
@@ -486,6 +580,28 @@ export default function Blog() {
   const { lang } = useLang()
   const { posts } = usePortfolio()
   const [open, setOpen] = useState(false)
+  const [initialSlug, setInitialSlug] = useState(null)
+
+  // If the page was opened with ?post=<slug>, auto-open the blog overlay on
+  // that post once it becomes available in the portfolio data.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const slug = params.get('post')
+    if (!slug) return
+    setInitialSlug(slug)
+    setOpen(true)
+  }, [])
+
+  // Strip the `?post=` param from the URL when the overlay closes.
+  function handleClose() {
+    setOpen(false)
+    setInitialSlug(null)
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('post')) {
+      url.searchParams.delete('post')
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash)
+    }
+  }
 
   if (!posts || posts.length === 0) return null
 
@@ -508,7 +624,7 @@ export default function Blog() {
         <span className="blog-fab__label">{t(lang, 'blogTitle')}</span>
       </button>
 
-      {open && <BlogOverlay onClose={() => setOpen(false)} />}
+      {open && <BlogOverlay initialSlug={initialSlug} onClose={handleClose} />}
     </>
   )
 }

@@ -51,6 +51,9 @@ const translations = {
     blogCommentPlaceholder: 'Поделитесь мыслями...',
     blogCommentSend: 'Отправить',
     blogCommentDelete: 'Удалить',
+    blogShare: 'Поделиться',
+    blogShareCopied: 'Ссылка скопирована',
+    blogShareCopy: 'Скопируйте ссылку:',
     // auth
     authLogin: 'Войти',
     authRegister: 'Регистрация',
@@ -190,6 +193,9 @@ const translations = {
     blogCommentPlaceholder: 'Share your thoughts...',
     blogCommentSend: 'Send',
     blogCommentDelete: 'Delete',
+    blogShare: 'Share',
+    blogShareCopied: 'Link copied',
+    blogShareCopy: 'Copy this link:',
     // auth
     authLogin: 'Sign in',
     authRegister: 'Sign up',
